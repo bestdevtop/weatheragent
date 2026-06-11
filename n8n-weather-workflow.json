@@ -206,41 +206,12 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
-          "conditions": [
-            {
-              "id": "check-sms-ok",
-              "leftValue": "={{ $json.sid }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "a1b2c3d4-0007-4000-8000-000000000007a",
-      "name": "IF SMS OK",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [1680, 400]
-    },
-    {
-      "parameters": {
         "resource": "email",
         "operation": "send",
         "toEmail": "={{ $env.TO_EMAIL }}",
         "subject": "=Coat reminder: {{ $('Get Weather').item.json.name }}",
         "emailFormat": "text",
-        "text": "=Today's temperature in {{ $('Get Weather').item.json.name }} is {{ Math.round($('Get Weather').item.json.main.temp) }}°F.\n\nBring a coat.\n\n(SMS fallback — Twilio could not deliver the text message.)",
+        "text": "=Today's temperature in {{ $('Get Weather').item.json.name }} is {{ Math.round($('Get Weather').item.json.main.temp) }}°F.\n\nBring a coat.",
         "options": {}
       },
       "id": "a1b2c3d4-0008-4000-8000-000000000008",
@@ -252,7 +223,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const weather = $('Get Weather').first().json;\nconst customerPhone = $('Extract Request').first().json.customer_phone;\nconst temp = weather.main.temp;\nconst description = weather.weather[0].description;\nconst cityName = weather.name;\nconst threshold = Number($env.COLD_THRESHOLD_F || 50);\nconst isCold = temp < threshold;\n\nconst smsSent = $('Twilio SMS').isExecuted && !!$('Twilio SMS').first().json.sid;\nconst emailSent = $('Send Email').isExecuted && !!$('Send Email').first().json.messageId;\n\nlet message;\nif (isCold) {\n  if (smsSent) {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — I've texted you a coat reminder.`;\n  } else if (emailSent) {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — I've emailed you a coat reminder.`;\n  } else {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — bring a coat!`;\n  }\n} else {\n  message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. No coat needed today!`;\n}\n\nreturn [{\n  json: {\n    temperature_f: temp,\n    description,\n    city: cityName,\n    is_cold: isCold,\n    message\n  }\n}];"
+        "jsCode": "const weather = $('Get Weather').first().json;\nconst customerPhone = $('Extract Request').first().json.customer_phone;\nconst temp = weather.main.temp;\nconst description = weather.weather[0].description;\nconst cityName = weather.name;\nconst threshold = Number($env.COLD_THRESHOLD_F || 50);\nconst isCold = temp < threshold;\n\nconst smsSent = $('Twilio SMS').isExecuted && !!$('Twilio SMS').first().json.sid;\nconst emailSent = $('Send Email').isExecuted && !!$('Send Email').first().json.messageId;\n\nlet message;\nif (isCold) {\n  if (smsSent && emailSent) {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — I've texted and emailed you a coat reminder.`;\n  } else if (smsSent) {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — I've texted you a coat reminder.`;\n  } else if (emailSent) {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — I've emailed you a coat reminder.`;\n  } else {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — bring a coat!`;\n  }\n} else {\n  message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. No coat needed today!`;\n}\n\nreturn [{\n  json: {\n    temperature_f: temp,\n    description,\n    city: cityName,\n    is_cold: isCold,\n    message\n  }\n}];"
       },
       "id": "a1b2c3d4-0009-4000-8000-000000000009",
       "name": "Build Response",
@@ -382,7 +353,7 @@
         ],
         [
           {
-            "node": "Build Response",
+            "node": "Send Email",
             "type": "main",
             "index": 0
           }
@@ -391,24 +362,6 @@
     },
     "Twilio SMS": {
       "main": [
-        [
-          {
-            "node": "IF SMS OK",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "IF SMS OK": {
-      "main": [
-        [
-          {
-            "node": "Build Response",
-            "type": "main",
-            "index": 0
-          }
-        ],
         [
           {
             "node": "Send Email",
