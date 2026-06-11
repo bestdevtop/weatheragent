@@ -1,0 +1,464 @@
+{
+  "name": "WeatherCoatAgent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "weather-check",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "weather-check"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst body = raw.body || raw;\nconst args = body.args || body;\nconst call = body.call || {};\nconst city = args.city || body.city;\n\nlet customerPhone =\n  call.from_number ||\n  call.user_number ||\n  body.from_number ||\n  null;\n\nif (call.direction === 'outbound') {\n  customerPhone = call.to_number || call.user_number || customerPhone;\n}\n\nif (customerPhone) {\n  customerPhone = String(customerPhone).trim();\n  if (!customerPhone.startsWith('+')) {\n    const digits = customerPhone.replace(/\\D/g, '');\n    if (digits) customerPhone = '+' + digits;\n  }\n}\n\nif (!city) {\n  return [{\n    json: {\n      error: true,\n      message: \"I couldn't find a city name. Which town would you like me to check?\"\n    }\n  }];\n}\n\nreturn [{ json: { city: String(city).trim(), customer_phone: customerPhone || null } }];"
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Extract Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-error",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "IF Missing City",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.openweathermap.org/data/2.5/weather?q={{ encodeURIComponent($json.city) }}&units=imperial&appid={{ $env.OPENWEATHER_API_KEY }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Get Weather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-api-error",
+              "leftValue": "={{ $json.cod }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "IF API Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1130, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-cold",
+              "leftValue": "={{ $json.main.temp }}",
+              "rightValue": "={{ Number($env.COLD_THRESHOLD_F || 50) }}",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "IF Cold",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1350, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-phone",
+              "leftValue": "={{ $('Extract Request').item.json.customer_phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0006-4000-8000-000000000006a",
+      "name": "IF Has Phone",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1460, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $env.TWILIO_ACCOUNT_SID }}/Messages.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Basic ' + Buffer.from($env.TWILIO_ACCOUNT_SID + ':' + $env.TWILIO_AUTH_TOKEN).toString('base64') }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_FROM_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $('Extract Request').item.json.customer_phone }}"
+            },
+            {
+              "name": "Body",
+              "value": "=Today's temperature in {{ $json.name }} is {{ Math.round($json.main.temp) }}°F.\n\nBring a coat."
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Twilio SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1570, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-sms-ok",
+              "leftValue": "={{ $json.sid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0007-4000-8000-000000000007a",
+      "name": "IF SMS OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1680, 400]
+    },
+    {
+      "parameters": {
+        "resource": "email",
+        "operation": "send",
+        "toEmail": "={{ $env.TO_EMAIL }}",
+        "subject": "=Coat reminder: {{ $('Get Weather').item.json.name }}",
+        "emailFormat": "text",
+        "text": "=Today's temperature in {{ $('Get Weather').item.json.name }} is {{ Math.round($('Get Weather').item.json.main.temp) }}°F.\n\nBring a coat.\n\n(SMS fallback — Twilio could not deliver the text message.)",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0008-4000-8000-000000000008",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1790, 520],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const weather = $('Get Weather').first().json;\nconst customerPhone = $('Extract Request').first().json.customer_phone;\nconst temp = weather.main.temp;\nconst description = weather.weather[0].description;\nconst cityName = weather.name;\nconst threshold = Number($env.COLD_THRESHOLD_F || 50);\nconst isCold = temp < threshold;\n\nconst smsSent = $('Twilio SMS').isExecuted && !!$('Twilio SMS').first().json.sid;\nconst emailSent = $('Send Email').isExecuted && !!$('Send Email').first().json.messageId;\n\nlet message;\nif (isCold) {\n  if (smsSent) {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — I've texted you a coat reminder.`;\n  } else if (emailSent) {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — I've emailed you a coat reminder.`;\n  } else {\n    message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. It's cold — bring a coat!`;\n  }\n} else {\n  message = `It's ${Math.round(temp)}°F and ${description} in ${cityName}. No coat needed today!`;\n}\n\nreturn [{\n  json: {\n    temperature_f: temp,\n    description,\n    city: cityName,\n    is_cold: isCold,\n    message\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0009-4000-8000-000000000009",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1790, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nreturn [{ json: { message: input.message || \"I couldn't find that city. Could you try another name?\" } }];"
+      },
+      "id": "a1b2c3d4-0010-4000-8000-000000000010",
+      "name": "Build Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0011-4000-8000-000000000011",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2010, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Request": {
+      "main": [
+        [
+          {
+            "node": "IF Missing City",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Missing City": {
+      "main": [
+        [
+          {
+            "node": "Build Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Weather": {
+      "main": [
+        [
+          {
+            "node": "IF API Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF API Error": {
+      "main": [
+        [
+          {
+            "node": "Build Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Cold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Cold": {
+      "main": [
+        [
+          {
+            "node": "IF Has Phone",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has Phone": {
+      "main": [
+        [
+          {
+            "node": "Twilio SMS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio SMS": {
+      "main": [
+        [
+          {
+            "node": "IF SMS OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF SMS OK": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Error Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

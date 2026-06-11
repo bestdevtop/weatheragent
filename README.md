@@ -1,6 +1,6 @@
 # Backend — Weather Voice Agent Webhook
 
-FastAPI webhook that implements the same logic as the n8n workflow. Point Retell's `check_weather` function here (via ngrok) or use the n8n import in `../docs/n8n-weather-workflow.json`.
+FastAPI webhook that implements the same logic as the n8n workflow. Point Retell's `check_weather` function here (via ngrok) or use the n8n import in `n8n-weather-workflow.json`.
 
 ## Setup
 
